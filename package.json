@@ -1,0 +1,13 @@
+{
+  "name"         : "minecraft-listen",
+  "version"      : "0.0.1",
+  "description"  : "Who's playing minecraft?",
+  "main"         : "app.js",
+  "author"       : "Victor Hung",
+  "dependencies" : {
+    "express"    : "latest",
+    "request"    : "latest",
+    "cheerio"    : "latest",
+    "apn"        : "*"
+  }
+}
