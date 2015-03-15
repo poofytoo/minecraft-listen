@@ -34,7 +34,6 @@ app.get('/time', function(req, res){
 
 app.get('/minecraft/:actions', function(req, res) {
   var actions = req.params.actions.split('-');
-  console.log(actions);
   var promises = [];
   _.each(actions, function(action) {
     if (!_.isUndefined(minecraft[action])) {
@@ -47,11 +46,14 @@ app.get('/minecraft/:actions', function(req, res) {
       return flag || f;
     });
     var message;
+    console.log(promises);
     if (flag) {
       message = _.pluck(_.filter(promises, function(p) { return p.flag; }), 'message').join(', ');
       minecraft.messages[req.params.actions] = {message: message, flag: Math.random() * 1000000};
     } else if (_.isUndefined(minecraft.messages[req.params.actions])) {
-      minecraft.messages[req.params.actions] = {message: '', flag: null};
+      // minecraft.messages[req.params.actions] = {message: '', flag: null};
+      message = _.pluck(promises, 'message').join(', ');
+      minecraft.messages[req.params.actions] = {message: message, flag: Math.random() * 1000000};
     }
     res.json(minecraft.messages[req.params.actions]);
   })
@@ -74,6 +76,7 @@ Minecraft.prototype.updatePlayers = function() {
       out = JSON.parse(json);
       playersList = out.players;
       minecraft.namesList = _.pluck(playersList, 'name');
+      console.log('updated names list');
       defer.resolve(true);
     }
   });
@@ -87,6 +90,7 @@ Minecraft.prototype.newUser = function() {
       out = JSON.parse(json);
       playersList = out.players;
       var joinedPlayers = [];
+      console.log('check joined', minecraft.namesList, _.pluck(playersList, 'name'));
       _.each(playersList, function(player) {
         if (!_.includes(minecraft.namesList, player.name)) {
           joinedPlayers.push(player.name);
@@ -110,6 +114,7 @@ Minecraft.prototype.leftUser = function() {
       out = JSON.parse(json);
       playersList = out.players;
       var leftPlayers = [];
+      console.log('check leaving', minecraft.namesList, _.pluck(playersList, 'name'));
       _.each(minecraft.namesList, function(player) {
         if (_.isUndefined(_.find(playersList, {'name': player}))) {
           leftPlayers.push(player);
@@ -117,7 +122,6 @@ Minecraft.prototype.leftUser = function() {
       });
       if (leftPlayers.length > 0) {
         minecraft.leftPlayers = leftPlayers;
-        console.log('here');
         defer.resolve({'message': 'Left: ' + minecraft.leftPlayers.join(','), 'flag': true});
       } else {
         defer.resolve({'message': 'Left: ' + minecraft.leftPlayers.join(','), 'flag': false});
