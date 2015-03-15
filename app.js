@@ -40,22 +40,21 @@ app.get('/minecraft/:actions', function(req, res) {
       promises.push(minecraft[action]());
     }
   });
-  promises.push(minecraft.updatePlayers());
   Q.all(promises).fin(function() {
-    var flag = _.reduce(_.pluck(_.take(promises, promises.length - 1), 'flag'), function(flag, f) {
-      return flag || f;
-    });
-    var message;
-    console.log(promises);
-    if (flag) {
-      message = _.pluck(_.filter(promises, function(p) { return p.flag; }), 'message').join(', ');
-      minecraft.messages[req.params.actions] = {message: message, flag: Math.random() * 1000000};
-    } else if (_.isUndefined(minecraft.messages[req.params.actions])) {
-      // minecraft.messages[req.params.actions] = {message: '', flag: null};
-      message = _.pluck(promises, 'message').join(', ');
-      minecraft.messages[req.params.actions] = {message: message, flag: Math.random() * 1000000};
-    }
-    res.json(minecraft.messages[req.params.actions]);
+    minecraft.updatePlayers().then(function() {
+      var flag = _.reduce(_.pluck(_.take(promises, promises.length - 1), 'flag'), function(flag, f) {
+        return flag || f;
+      });
+      var message;
+      if (flag) {
+        message = _.pluck(_.filter(promises, function(p) { return p.flag; }), 'message').join(', ');
+        minecraft.messages[req.params.actions] = {message: message, flag: Math.random() * 1000000};
+      } else if (_.isUndefined(minecraft.messages[req.params.actions])) {
+        message = _.pluck(promises, 'message').join(', ');
+        minecraft.messages[req.params.actions] = {message: message, flag: Math.random() * 1000000};
+      }
+      res.json(minecraft.messages[req.params.actions]);
+    })
   })
 });
 
