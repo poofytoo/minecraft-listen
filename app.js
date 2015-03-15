@@ -48,15 +48,11 @@ app.get('/minecraft/:actions', function(req, res) {
     var message;
     if (flag) {
       message = _.pluck(_.filter(promises, function(p) { return p.flag; }), 'message').join(', ');
-      minecraft.messages[req.params.actions] = message;
-    } else {
-      if (_.isUndefined(minecraft.messages[req.params.actions])) {
-        minecraft.messages[req.params.actions] = '';
-      }
-      message = minecraft.messages[req.params.actions];
+      minecraft.messages[req.params.actions] = {message: message, flag: Math.random() * 1000000};
+    } else if (_.isUndefined(minecraft.messages[req.params.actions])) {
+      minecraft.messages[req.params.actions] = '';
     }
-    
-    res.json({message: message, flag: flag});
+    res.json(minecraft.messages[req.params.actions]);
   })
 });
 
