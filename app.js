@@ -34,6 +34,7 @@ app.get('/time', function(req, res){
 
 app.get('/minecraft/:actions', function(req, res) {
   var actions = req.params.actions.split('-');
+  console.log(actions);
   var promises = [];
   _.each(actions, function(action) {
     if (!_.isUndefined(minecraft[action])) {
@@ -50,7 +51,7 @@ app.get('/minecraft/:actions', function(req, res) {
       message = _.pluck(_.filter(promises, function(p) { return p.flag; }), 'message').join(', ');
       minecraft.messages[req.params.actions] = {message: message, flag: Math.random() * 1000000};
     } else if (_.isUndefined(minecraft.messages[req.params.actions])) {
-      minecraft.messages[req.params.actions] = '';
+      minecraft.messages[req.params.actions] = {message: '', flag: null};
     }
     res.json(minecraft.messages[req.params.actions]);
   })
