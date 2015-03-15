@@ -3,9 +3,11 @@
 var express = require('express');
 var fs = require('fs');
 var request = require('request');
+var _ = require('lodash');
 var cheerio = require('cheerio');
 var apn = require('apn');
 var app = express();
+var Q = require('q');
 
 // Push Notification settings
 
@@ -16,9 +18,7 @@ var options = {
 var apnConnection = new apn.Connection(options);
 var myDevice = new apn.Device("6e990cbedb33b90e228037a93b88449a055f045ffcb9ab4cd4171a89769f6b85");
 
-var namesList = [];
-var isDay = null;
-var time = null;
+var minecraft = new Minecraft();
 
 app.get('/', function(req, res){
   res.send(namesList);
@@ -32,43 +32,166 @@ app.get('/time', function(req, res){
   res.json({ time: time });
 });
 
+app.get('/minecraft/:actions', function(req, res) {
+  var actions = req.params.actions.split('-');
+  var promises = [];
+  _.each(actions, function(action) {
+    if (!_.isUndefined(minecraft[action])) {
+      promises.push(minecraft[action]());
+    }
+  });
+  promises.push(minecraft.updatePlayers());
+  Q.all(promises).fin(function() {
+    var flag = _.reduce(_.pluck(_.take(promises, promises.length - 1), 'flag'), function(flag, f) {
+      return flag || f;
+    });
+    var message;
+    if (flag) {
+      message = _.pluck(_.filter(promises, function(p) { return p.flag; }), 'message').join(', ');
+      minecraft.messages[req.params.actions] = message;
+    } else {
+      if (_.isUndefined(minecraft.messages[req.params.actions])) {
+        minecraft.messages[req.params.actions] = '';
+      }
+      message = minecraft.messages[req.params.actions];
+    }
+    
+    res.json({message: message, flag: flag});
+  })
+});
 
-var url = 'http://nextcode.mit.edu:8123/up/world/world/1425315764073';
-var pingServer = function() {
-  request(url, function(error, response, json){
+function Minecraft() {
+  this.url = 'http://nextcode.mit.edu:8123/up/world/world/1425315764073';
+  this.namesList = [];
+  this.isDay = null;
+  this.time = null;
+  this.joinedPlayers = [];
+  this.leftPlayers = [];
+  this.messages = {};
+};
+
+Minecraft.prototype.updatePlayers = function() {
+  var defer = Q.defer();
+  request(minecraft.url, function(error, response, json) {
     if(!error){
       out = JSON.parse(json);
-
-      msg = setTime(out.servertime) || '';
-
       playersList = out.players;
-      joinedNames = [];
-      namesListTemp = [];
-      namesListCopy = namesList.slice(0);
-      for (i in playersList) {
-        playerName = playersList[i].name;
-        namesListTemp.push(playerName)
-        nameIndex = namesListCopy.indexOf(playerName);
-        if (nameIndex == -1) {
-          // player didn't exist before, joined player
-          joinedNames.push(playerName); 
-        } else {
-          namesListCopy.splice(nameIndex, 1);
-        }
-      }
-      leftNames = namesListCopy;
-      namesList = namesListTemp.slice(0);
-      if (joinedNames.length > 0) {
-        msg += 'Joined: ' + joinedNames.join(', ');
-        console.log(msg);
-      }
-      if (leftNames.length > 0) {
-        msg = 'Left: ' + leftNames.join(', ');
-        console.log(msg);
-      }
+      minecraft.namesList = _.pluck(playersList, 'name');
+      defer.resolve(true);
+    }
+  });
+  return defer.promise;
+}
 
-      if (msg != '') {
-        sendMessage(msg);
+Minecraft.prototype.newUser = function() {
+  var defer = Q.defer();
+  request(minecraft.url, function(error, response, json) {
+    if(!error){
+      out = JSON.parse(json);
+      playersList = out.players;
+      var joinedPlayers = [];
+      _.each(playersList, function(player) {
+        if (!_.includes(minecraft.namesList, player.name)) {
+          joinedPlayers.push(player.name);
+        }
+      });
+      if (joinedPlayers.length > 0) {
+        minecraft.joinedPlayers = joinedPlayers;
+        defer.resolve({'message': 'Joined: ' + minecraft.joinedPlayers.join(','), 'flag': true});
+      } else {
+        defer.resolve({'message': 'Joined: ' + minecraft.joinedPlayers.join(','), 'flag': false});
+      }
+    }
+  });
+  return defer.promise;
+};
+
+Minecraft.prototype.leftUser = function() {
+  var defer = Q.defer();
+  request(minecraft.url, function(error, response, json) {
+    if (!error) {
+      out = JSON.parse(json);
+      playersList = out.players;
+      var leftPlayers = [];
+      _.each(minecraft.namesList, function(player) {
+        if (_.isUndefined(_.find(playersList, {'name': player}))) {
+          leftPlayers.push(player);
+        }
+      });
+      if (leftPlayers.length > 0) {
+        minecraft.leftPlayers = leftPlayers;
+        console.log('here');
+        defer.resolve({'message': 'Left: ' + minecraft.leftPlayers.join(','), 'flag': true});
+      } else {
+        defer.resolve({'message': 'Left: ' + minecraft.leftPlayers.join(','), 'flag': false});
+      }
+    }
+  });
+  return defer.promise;
+}
+
+Minecraft.prototype.daytime = function() {
+  var defer = Q.defer();
+  request(minecraft.url, function(error, response, json) {
+    if (!error) {
+      out = JSON.parse(json);
+      time = getMinecraftTime(out.servertime);
+      if (time.day != minecraft.isDay) {
+        minecraft.isDay = time.day
+        if (time.day) {
+          minecraft.time = 'Daytime!';
+          defer.resolve({'message': 'Daytime!', 'flag': true});
+        } else {
+          minecraft.time = 'Nightime!';
+          defer.resolve({'message': 'Daytime!', 'flag': false});
+        }
+      } else {
+        defer.resolve({'message': 'Daytime!', 'flag': false});
+      }
+    }
+  });
+  return defer.promise;
+}
+
+Minecraft.prototype.nighttime = function() {
+  var defer = Q.defer();
+  request(minecraft.url, function(error, response, json) {
+    if (!error) {
+      out = JSON.parse(json);
+      time = getMinecraftTime(out.servertime);
+      if (time.day != minecraft.isDay) {
+        minecraft.isDay = time.day
+        if (time.day) {
+          minecraft.time = 'Daytime!';
+          defer.resolve({'message': 'Nightime!', 'flag': false});
+        } else {
+          minecraft.time = 'Nightime!';
+          defer.resolve({'message': 'Nightime!', 'flag': true});
+        }
+      } else {
+        defer.resolve({'message': 'Nightime!', 'flag': false});
+      }
+    }
+  });
+}
+
+Minecraft.prototype.time = function() {
+  var defer = Q.defer();
+  request(minecraft.url, function(error, response, json) {
+    if (!error) {
+      out = JSON.parse(json);
+      time = getMinecraftTime(out.servertime);
+      if (time.day != minecraft.isDay) {
+        minecraft.isDay = time.day
+        if (time.day) {
+          minecraft.time = 'Daytime!';
+          defer.resolve({'message': 'Daytime!', 'flag': true});
+        } else {
+          minecraft.time = 'Nightime!';
+          defer.resolve({'message': 'Nightime!', 'flag': true});
+        }
+      } else {
+        defer.resolve({'message': minecraft.time, 'flag': false});
       }
     }
   });
@@ -147,7 +270,7 @@ function sendMessage(message) {
   apnConnection.pushNotification(note, myDevice);
 }
 
-setInterval(pingServer, 2000);
+// setInterval(pingServer, 2000);
 
 app.listen('8081')
 console.log('Magic happens on port 8081');
